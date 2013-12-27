@@ -1,9 +1,14 @@
 //==UserScript==
-//@name muse-lens
-//@exclude  http://localhost*
-//@exclude  http://www.google.com/*
-//@exclude  http://*.google.com/*
+// @name muse-lens
+// @exclude  http://localhost*
+// @exclude  http://www.google.com/*
+// @exclude  http://*.google.com/*
+// @exclude  http://facebook.com*
 // @require       http://ajax.googleapis.com/ajax/libs/jquery/1.2.6/jquery.js
+// @require   http://ajax.googleapis.com/ajax/libs/jquery/1.2.6/jquery.js
+// @require   http://localhost:8080/muse/js/jquery.prettyPhoto.js 
+// @grant none
+
 //==/UserScript==
 
 /**
@@ -19,8 +24,7 @@
     
     window.DEBUG = true; 
     try{throw'';}catch(e){}
-    var RUNNING_IN_PLUGIN = (typeof chrome != 'undefined' && chrome && chrome.extension);
-
+    
     if (window.top != window.self) // don't run on iframes window
 	return;
 
@@ -29,7 +33,7 @@
     // see: http://stackoverflow.com/questions/6105544/jquery-closest-works-on-one-page-but-not-another
 
     if (typeof window.MUSE_URL == 'undefined')
-	window.MUSE_URL = "http://localhost:9099/muse";
+	window.MUSE_URL = "http://localhost:8080/muse";
 
     var LOG;
     if (typeof GM_log == 'undefined') {
@@ -44,19 +48,10 @@
     if (typeof unsafeWindow == 'undefined')
 	unsafeWindow = window;
 
-    LOG ('Running lens on ' + document.URL + (RUNNING_IN_PLUGIN ? ' (in plugin)' : ''));
+    LOG ('Running lens on ' + document.URL);
 
     // Add jQuery to the page
-    inject_jquery = function() {
-	if (RUNNING_IN_PLUGIN)	{
-	    // directly call main, no need for injecting jq
-	    $_ = $;
-	    main();
-	    return;
-	}
-
-	var saved$ = null; // will save the original jq if page already has it
-	
+    wait_for_scripts = function() {
 	function wait_for_prettyphoto_and_call_main() {
 	    if (typeof unsafeWindow.jQuery.fn.prettyPhoto == 'undefined') {
 		window.setTimeout(wait_for_prettyphoto_and_call_main, 100); // jq not loaded, try again in 100ms
@@ -64,13 +59,10 @@
 		LOG ('ok, pretty photo loaded up ' + unsafeWindow.jQuery.prettyPhoto.version);
 		
 		// now, make our version of jq invisible and restore the original version if it exists
-		$_ = unsafeWindow.jQuery.noConflict(true); // $_ is our version of jq, regardless of whether page had its own.	
-		if (saved$ != null) {
-		    LOG ('restoring original version of jquery on page: ' + saved$().jquery);
-		    unsafeWindow.$ = unsafeWindow.jQuery = saved$; // restore saved
-		} else {
-		    LOG ('cool, no previous version of jquery on page');
-		}
+		//SO that window.$ of the original age is not mangled with.
+		this.$ = this.jQuery = jQuery.noConflict(true);
+		$_ = this.jQuery.noConflict(true); // $_ is our version of jq, regardless of whether page had its own.	
+		
 		if (document.URL.indexOf("youtube") >= 0) { 
 		    prefetchYoutube();
 		    window.setTimeout(main,3300); // 3500);
@@ -81,61 +73,33 @@
 	
 	// function that polls and waits for jq to show up before dispatching to main
 	function wait_for_jquery_and_call_main() {
-	    if (typeof unsafeWindow.jQuery == 'undefined') {
-		window.setTimeout(wait_for_jquery_and_call_main, 100); // jq not loaded, try again in 100ms
+	    if($ == "undefined"){
+	    	window.setTimeout(wait_for_jquery_and_call_main, 100); // jq not loaded, try again in 100ms
 	    } else {
 		// we have to install prettyPhoto also now
-		LOG ('new jquery loaded, version is ' + unsafeWindow.jQuery().jquery + '. now injecting pretty photo');
+		LOG ('new jquery loaded, version is ' + window.jQuery().jquery + '. now injecting pretty photo');
 		function inject_prettyphoto() {
-		    var GM_Head = document.getElementsByTagName('head')[0] || document.documentElement || document.body;
-		    var GM_JQPP = document.createElement('script');
-		    GM_JQPP.src = window.MUSE_URL + '/js/jquery.prettyPhoto.js';
-		    GM_JQPP.type = 'text/javascript';
-		    GM_JQPP.async = true;
-		    GM_Head.insertBefore(GM_JQPP, GM_Head.lastChild);
 		    var myStylesLocation = window.MUSE_URL + '/css/prettyPhoto.css';
-		    unsafeWindow.jQuery('<link rel="stylesheet" type="text/css" href="' + myStylesLocation + '" >').appendTo("head");           
+		    jQuery('<link rel="stylesheet" type="text/css" href="' + myStylesLocation + '" >').appendTo("head");           
 		}
 		// we have to wait now for prettyphoto also, because we want it to be associated with our version of jq
-		$ = jQuery = unsafeWindow.jQuery;
+		//SO that window.$ of the original age is not mangled with.
+		//$ = jQuery = unsafeWindow.jQuery;
 		inject_prettyphoto();
 		wait_for_prettyphoto_and_call_main();
 	    }	
 	}
 	
-	function inject_jq_script() {
-	    LOG ("injecting jq");
-            var jq_scr = document.createElement('script');
-            jq_scr.src = window.MUSE_URL + '/js/jquery/jquery.js';
-            jq_scr.type = 'text/javascript';
-            jq_scr.async = true;
-	    var heads = document.getElementsByTagName('head');
-            if (heads.length > 0)
-		head = heads[0];
-            else
-		head = document.documentElement || document.body;
-	    head.insertBefore(jq_scr, head.firstChild);
-	}
-
-	if (typeof unsafeWindow.jQuery == 'undefined') {
-	    inject_jq_script();
-	} else {
-	    // see http://blog.nemikor.com/2009/10/03/using-multiple-versions-of-jquery/ for noconflict explanation
-	    saved$ = unsafeWindow.jQuery.noConflict(true); // first save away the original jq if page already has it			
-	    LOG ('saving away original version of jquery on page: ' + saved$().jquery);
-	    inject_jq_script();
-	}
-	
-	LOG ("Waiting for jquery in URL:" + document.URL);
 	wait_for_jquery_and_call_main();
     };
 
     init = function() {
+	//are these the only urls to be neglected.
 	if ((document.URL.indexOf(".js") == document.URL.length-3) || (document.URL.indexOf(".css") == document.URL.length-4)) {
 	    LOG ("skipping injecting jq into " + document.URL);
 	    return;
 	}
-	inject_jquery();
+	wait_for_scripts();
     };
 
 
@@ -368,6 +332,7 @@
 	var textNodesOnPage; // global var
 	var hits = null; // global var
 	
+	//TODO: Just put all this styles in a file and add it, it looks cluttered here
 	var inject_styles = function() {
 	    styles =  '.muse-navbar {padding-top: 3px; position: fixed; top: 0pt; right:10px;z-index:10000; text-transform:uppercase;font-family:"Gill Sans",Calibri,Helvetica,Arial,Times;font-size:10pt;font-weight:normal} \
 .muse-navbar a span{-moz-border-radius: 4px; background-color: #0C3569; opacity: 0.9;} \
@@ -413,11 +378,8 @@
 	if (document.URL.indexOf('Registration%20Statement') >= 0)
 	    ignore_invisible = false; // fb sec s1
 	
-	if(DEBUG)
-	    textNodesOnPage = addTextNodes(document.body, null, true, ignore_invisible);
-	else
-	    textNodesOnPage = addTextNodes(document.body, null, true, ignore_invisible);
-
+	textNodesOnPage = addTextNodes(document.body, null, true, ignore_invisible);
+	
 	LOG (textNodesOnPage.length + ' text nodes found, elapsed time on page = ' + (new Date().getTime()-startTime) + 'ms');
 
 	// compile text nodes into a single string
@@ -461,7 +423,9 @@
 		muse_response = trim(response);
 		decoratePage(muse_response);
 	    },
-	    error: function(response) {
+	    error: function(jqXHR, status, error) {
+		LOG("on error: " + jqXHR.getAllResponseHeaders());
+	
 		var $newdiv1 = $_('<div id="calloutparent"/>');
 		var $newdivchild = $_('<div id="callout"/>');
 		$newdiv1.append($newdivchild);
@@ -470,21 +434,9 @@
 		$_("#callout").fadeIn('slow');
 		$_("#calloutparent").fadeIn('slow');
 		$_('#muse-status').fadeOut('slow');
-
-                window.setTimeout (function() { $_('#calloutparent').fadeOut('slow'); }, 5000); // fade out in 5 seconds
+		window.setTimeout (function() { $_('#calloutparent').fadeOut('slow'); }, 5000); // fade out in 5 seconds
 	    }
 	});
-
-	function inject_prettyphoto() {
-	    var GM_Head = document.getElementsByTagName('head')[0] || document.documentElement || document.body;
-	    var GM_JQPP = document.createElement('script');
-	    GM_JQPP.src = window.MUSE_URL + '/js/jquery.prettyPhoto.js';
-	    GM_JQPP.type = 'text/javascript';
-	    GM_JQPP.async = true;
-	    GM_Head.insertBefore(GM_JQPP, GM_Head.lastChild);
-	    var myStylesLocation = window.MUSE_URL + '/css/prettyPhoto.css';
-	    $_('<link rel="stylesheet" type="text/css" href="' + myStylesLocation + '" >').appendTo("head");           
-	}
 
 	// utility function to print s, subject to a maxChars limit
 	function ellipsize(s, maxChars) {
@@ -689,7 +641,7 @@
 		    
 		    //  LOG ('nodes twiddled, Node text is now: ' + node.data);
 		} // end for
-		LOG((new Date().getTime() - decorate_node_start_millis) + 'ms for ' + n_pats_hit + ' pattern hits in node with text length ' + nodeTextLength + ': ' + nodeTextSample);
+		//LOG((new Date().getTime() - decorate_node_start_millis) + 'ms for ' + n_pats_hit + ' pattern hits in node with text length ' + nodeTextLength + ': ' + nodeTextSample);
 
 		if (newNodes.length > 0)
     		    LOG (newNodes.length + " new nodes after decoration done");
@@ -862,6 +814,7 @@
 		return true;
 	    
 	    LOG ("showing messages in popup, hit_details = " + hit_details);
+	    console.log(hit_details);
 	    // if hit_details.messages are available, just go with that
 	    if (typeof hit_details.messages != 'undefined' && hit_details.messages.length > 0)
     		open_popup(hit_details);
@@ -888,9 +841,18 @@
 			alert ('getting term details failed : '  + textStatus);
 			LOG(dump_obj(jqXHR));
 			LOG(errorThrown);
+			var $newdiv1 = $_('<div id="calloutparent"/>');
+			var $newdivchild = $_('<div id="callout"/>');
+			$newdiv1.append($newdivchild);
+			$_('body').append($newdiv1);
+			$_("#callout").html ('Muse is off. (<a href="http://mobisocial.stanford.edu/muse/muse.jnlp">Launch it</a>)');
+			$_("#callout").fadeIn('slow');
+			$_("#calloutparent").fadeIn('slow');
+			$_('#muse-status').fadeOut('slow');
+			
+			window.setTimeout (function() { $_('#calloutparent').fadeOut('slow'); }, 5000); // fade out in 5 seconds
 		    }
 		});
-		LOG(dump_obj(jqXHR));
 	    }
 	    
 	    //    if ($_(e).stopPropagation)
@@ -1074,7 +1036,6 @@
 	}
 
 	function decoratePage(muse_response) {
-	    LOG ('decorating pages: ' + muse_response);
 	    var hits = null;
 	    try { hits = eval('(' + muse_response + ')'); } 
 	    catch (e) { LOG('error in evaluating muse response'); return; }
